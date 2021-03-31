@@ -57,15 +57,7 @@ export class Line extends Collider {
                 // RETURN CONTACT
                 let separation = da.normalize().scale(other.radius - Math.sqrt(dda));
                 let normal = da.normalize();
-                if (contact) {
-                    contact.bodyA = other;
-                    contact.bodyB = this;
-                    contact.normal = normal;
-                    contact.tangent = normal.perpendicular();
-                    contact.updatePoints([this.begin]);
-                    return contact;
-                }
-                return new Contact(other, this, normal, normal.perpendicular()).setPoints([this.begin]);
+                return new Contact(other, this, normal, normal.perpendicular(), [this.begin]);
             }
             
             // Potential region B collision (circle is on the right side of the edge, after the end)
@@ -78,15 +70,7 @@ export class Line extends Collider {
                 // RETURN CONTACT
                 let separation = db.normalize().scale(other.radius - Math.sqrt(ddb));
                 let normal = db.normalize();
-                if (contact) {
-                    contact.bodyA = other;
-                    contact.bodyB = this;
-                    contact.normal = normal;
-                    contact.tangent = normal.perpendicular();
-                    contact.updatePoints([this.end]);
-                    return contact;
-                }
-                return new Contact(other, this, normal, normal.perpendicular()).setPoints([this.end]);
+                return new Contact(other, this, normal, normal.perpendicular(), [this.end]);
             }
 
             // Otherwise potential region AB collision (circle is in the middle of the edge between the beginning and end)
@@ -114,17 +98,7 @@ export class Line extends Collider {
             const mvt = n.scale(Math.abs(other.radius - Math.sqrt(dd)));
 
             // RETURN CONTACT
-
-
-            if (contact) {
-                contact.bodyA = this;
-                contact.bodyB = other;
-                contact.normal = n;
-                contact.tangent = n.perpendicular();
-                contact.updatePoints([pointOnEdge]);
-                return contact;
-            }
-            return new Contact(this, other, n, n.perpendicular()).setPoints([pointOnEdge]);
+            return new Contact(this, other, n, n.perpendicular(), [pointOnEdge]);
         }
 
         return null;

@@ -9,37 +9,7 @@ import { cross, Vector } from "./vector";
  */
 export class ContactPoint {
 
-    constructor(public point: Vector, public contact: Contact) {
-        this.update();
-     }
-
-    update() {
-        const bodyA = this.contact.bodyA;
-        const bodyB = this.contact.bodyB;
-        const normal = this.contact.normal;
-        const tangent = this.contact.tangent;
-
-        this.aToContact = this.point.sub(bodyA.xf.pos);
-        this.bToContact = this.point.sub(bodyB.xf.pos);
-
-        const aToContactNormal = this.aToContact.cross(normal);
-        const bToContactNormal = this.bToContact.cross(normal);
-
-        this.normalMass = bodyA.inverseMass + bodyB.inverseMass + 
-                          bodyA.inverseInertia * aToContactNormal * aToContactNormal +
-                          bodyB.inverseInertia * bToContactNormal * bToContactNormal;
-                          
-
-        const aToContactTangent = this.aToContact.cross(tangent);
-        const bToContactTangent = this.bToContact.cross(tangent);
-
-        this.tangentMass = bodyA.inverseMass + bodyB.inverseMass +
-                           bodyA.inverseInertia * aToContactTangent * aToContactTangent +
-                           bodyB.inverseInertia * bToContactTangent * bToContactTangent;
-
-
-        return this;
-    }
+    constructor(public point: Vector, public contact: Contact) {}
 
     public getRelativeVelocity() {
         const bodyA = this.contact.bodyA;
@@ -134,30 +104,11 @@ export class Contact {
         return 0
     }
 
-    private _points: ContactPoint[] = [];
-    public setPoints(points: Vector[]) {
-        this._points = points.map(p => {
-           return new ContactPoint(p, this).update()
-        });
-        return this;
-    }
-
-    public updatePoints(points: Vector[]) {
-        this._points.forEach((p, i) => {
-            p.point = points[i];
-            p.update();
-        })
-        return this;
-    }
-
-    public get points(): ContactPoint[] {
-        return this._points;
-    }
-
     constructor(
         public bodyA: Collider,
         public bodyB: Collider,
         public normal: Vector,
-        public tangent: Vector
+        public tangent: Vector,
+        public points: Vector[] = []
     ) {}
 }

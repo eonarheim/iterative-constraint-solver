@@ -35,21 +35,17 @@ const entities = [
     new Line(new Vector(100, 100), new Vector(300, 650)),
     new Line(new Vector(500, 650), new Vector(700, 100)),
     new Circle(40, new Vector(canvas.width / 2, 400)),
-    // new Circle(40, new Vector(canvas.width / 2, 300)),
+    new Circle(40, new Vector(canvas.width / 2, 300)),
     // new Circle(40, new Vector(canvas.width / 2, 200)),
     // new Circle(40, new Vector(canvas.width / 2, 100)),
     // new Circle(40, new Vector(canvas.width / 2, 0)),
     // new Circle(40, new Vector(canvas.width / 2, -100)),
     // new Circle(40, new Vector(canvas.width / 2, -200)),
 ];
-entities[3].m.angularVelocity = 1;
-// entities.reverse();
-shuffle(entities);
 (window as any).entities = entities;
 
 let solver = new Solver();
 let contacts: Contact[] = [];
-let lastFrameContacts: Map<string, Contact> = new Map();
 const update = (elapsed: number) => {
     let acc = new Vector(0, 0);
     if (flags['Gravity']) {
@@ -64,15 +60,14 @@ const update = (elapsed: number) => {
         }
     }
 
-    // Naive descrete collision detection
+    // Naive descrete collision detection (broadphase + narrowphase)
     // We re-use contacts from the previous frame if they exist
     contacts = []
     for (let i = 0; i < entities.length; i++) {
         for (let j = i + 1; j < entities.length; j++) {
             let circleA = entities[i];
             let circleB = entities[j];
-            let lastFrame = lastFrameContacts.get(Contact.GetId(circleA, circleB));
-            let contact = circleA.collide(circleB, lastFrame);
+            let contact = circleA.collide(circleB);
             if (contact) {
                 contacts.push(contact);
             }
@@ -80,6 +75,9 @@ const update = (elapsed: number) => {
         }
     }
 
+    // Initialize contact information
+    solver.preSolve(contacts);
+    
     // Warm start impulses for velocity constraint
     // This helps with simulation coherence by reusing work from previous frames
     // Practically this will cancel gravity on big stacks
@@ -87,7 +85,8 @@ const update = (elapsed: number) => {
         solver.warmStart(contacts);
     } else {
         for (let contact of contacts) {
-            for (let point of contact.points) {
+            let contactPoints = solver.getContactPoints(contact.id);
+            for (let point of contactPoints) {
                 point.normalImpulse = 0;
                 point.tangentImpulse = 0;
             }
@@ -99,7 +98,6 @@ const update = (elapsed: number) => {
     for (let i = 0; i < flags['Velocity Iterations']; i++) {
         solver.solveVelocity(contacts);
     }
-    
 
     // Integrate positions
     for (let circle of entities) {
@@ -120,9 +118,7 @@ const update = (elapsed: number) => {
         solver.solvePosition(contacts);
     }
 
-    // Store contacts
-    lastFrameContacts.clear();
-    contacts.forEach(c => lastFrameContacts.set(c.id, c));
+    solver.postSolve(contacts);
 }
 
 
@@ -174,9 +170,9 @@ const draw = (elapsed: number) => {
     }
 
     if (flags["Debug"]) {
-    for (let contact of contacts) {
-
-            for (let p of contact.points) {
+        for (let contact of contacts) {
+            let contactPoints = solver.getContactPoints(contact.id);
+            for (let p of contactPoints) {
                 ctx.beginPath();
                 ctx.strokeStyle = 'yellow'
                 ctx.arc(p.point.x, p.point.y, 5, 0, Math.PI * 2);
@@ -240,6 +236,11 @@ document.addEventListener('keydown', (ev) => {
         singleStep = false;
         lastMs = 0;
         mainloop(.016);
+    }
+
+    if (ev.code === 'KeyI') {
+        entities[3].applyImpulse(entities[3].xf.pos, new Vector(0, -5500));
+        entities[4].applyImpulse(entities[4].xf.pos, new Vector(0, 5500));
     }
 
     if (ev.code === 'KeyB') {

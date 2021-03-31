@@ -3,7 +3,13 @@ export class Vector {
     distance(other: Vector) {
         const dx = this.x - other.x;
         const dy = this.y - other.y;
-        return  Math.sqrt(dx * dx + dy * dy);
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    squareDistance(other: Vector) {
+        const dx = this.x - other.x;
+        const dy = this.y - other.y;
+        return dx * dx + dy * dy;
     }
 
     normalize(): Vector {

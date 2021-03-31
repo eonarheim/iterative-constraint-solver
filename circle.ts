@@ -39,18 +39,7 @@ export class Circle extends Collider {
                 const normal = direction.normalize();
                 const tangent = normal.perpendicular();
                 const point = this.xf.pos.add(normal.scale(this.radius));
-                if (contact) {
-                    contact.bodyA = this;
-                    contact.bodyB = other;
-                    contact.normal = normal;
-                    contact.tangent = tangent;
-                    contact.updatePoints([point]);
-                    
-                    return contact;
-
-                } else {
-                    return new Contact(this, other, normal, tangent).setPoints([point]);
-                }
+                return new Contact(this, other, normal, tangent, [point]);
             }
             return null;
         }

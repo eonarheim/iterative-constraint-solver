@@ -1,10 +1,93 @@
-import { Contact } from "./contact";
+import { Contact, ContactPoint } from "./contact";
 import { assert, clamp } from "./math";
 
 export class Solver {
+    lastFrameContacts: Map<string, Contact> = new Map();
+
+    // map contact id to contact points
+    idToContactPoints: Map<string, ContactPoint[]> = new Map();
+
+    getContactPoints(id: string) {
+        return this.idToContactPoints.get(id) ?? [];
+    }
+
+    preSolve(contacts: Contact[]) {
+        // Keep track of contacts that done
+        let finishedContactIds = Array.from(this.idToContactPoints.keys());
+        for (let contact of contacts) {
+            // Remove all current contacts that are not done
+            let index = finishedContactIds.indexOf(contact.id);
+            if (index > -1) {
+                finishedContactIds.splice(index, 1);
+            }
+            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
+            
+            let pointIndex = 0;
+            for (let point of contact.points) {
+                const bodyA = contact.bodyA;
+                const bodyB = contact.bodyB;
+                const normal = contact.normal;
+                const tangent = contact.tangent;
+
+                const aToContact = point.sub(bodyA.xf.pos);
+                const bToContact = point.sub(bodyB.xf.pos);
+    
+                const aToContactNormal = aToContact.cross(normal);
+                const bToContactNormal = bToContact.cross(normal);
+
+                const normalMass = bodyA.inverseMass + bodyB.inverseMass + 
+                                bodyA.inverseInertia * aToContactNormal * aToContactNormal +
+                                bodyB.inverseInertia * bToContactNormal * bToContactNormal;
+
+                const aToContactTangent = aToContact.cross(tangent);
+                const bToContactTangent = bToContact.cross(tangent);
+    
+                const tangentMass = bodyA.inverseMass + bodyB.inverseMass +
+                                bodyA.inverseInertia * aToContactTangent * aToContactTangent +
+                                bodyB.inverseInertia * bToContactTangent * bToContactTangent;
+
+                // Preserve normal/tangent impulse by re-using the contact point if it's close
+                if (contactPoints[pointIndex] && contactPoints[pointIndex]?.point?.squareDistance(point) < 4) {
+                    contactPoints[pointIndex].point = point;
+                } else {
+                    // new contact if its' not close or doesn't exist
+                    contactPoints[pointIndex] = new ContactPoint(point, contact);
+                }
+
+                // Update contact point calculations
+                contactPoints[pointIndex].aToContact = aToContact;
+                contactPoints[pointIndex].bToContact = bToContact;
+                contactPoints[pointIndex].normalMass = normalMass;
+                contactPoints[pointIndex].tangentMass = tangentMass;
+
+                pointIndex++
+            }
+            this.idToContactPoints.set(contact.id, contactPoints);
+        }
+
+        // Clean up any contacts that did not occur last frame
+        for (const id of finishedContactIds) {
+            this.idToContactPoints.delete(id);
+        }
+    }
+
+    postSolve(contacts: Contact[]) {
+        // Store contacts
+        this.lastFrameContacts.clear();
+        for (const c of contacts) {
+            this.lastFrameContacts.set(c.id, c);
+        }
+    }
+
+    /**
+     * Warm up body's based on previous frame contact points
+     * @param contacts 
+     */
     warmStart(contacts: Contact[]) {
         for (let contact of contacts) {
-            for (let point of contact.points) {
+            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
+            for (let point of contactPoints) {
+
                 const normalImpulse = contact.normal.scale(point.normalImpulse);
                 // Scaling back the tangent impulse seems to increase stack stability?
                 const tangentImpulse = contact.tangent.scale(point.tangentImpulse).scale(.2);
@@ -20,13 +103,15 @@ export class Solver {
             }
         }
     }
+
     /**
      * Iteratively solve the position overlap constraint
      * @param contacts 
      */
     solvePosition(contacts: Contact[]) {
         for (let contact of contacts) {
-            for (let point of contact.points) {
+            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
+            for (let point of contactPoints) {
                 const bodyA = contact.bodyA;
                 const bodyB = contact.bodyB;
                 const normal = contact.normal;
@@ -64,8 +149,9 @@ export class Solver {
 
             const restitution = bodyA.bounciness * bodyB.bounciness;
             const friction = Math.min(bodyA.friction, bodyB.friction);
+            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
 
-            for (let point of contact.points) {
+            for (let point of contactPoints) {
                 const relativeVelocity = point.getRelativeVelocity();
 
                 // Negate velocity in tangent direction to simulate friction
@@ -86,7 +172,7 @@ export class Solver {
                 bodyB.applyImpulse(point.point, impulse);
             }
 
-            for (let point of contact.points) {
+            for (let point of contactPoints) {
                 // Need to recalc relative velocity because the previous step could have changed vel
                 const relativeVelocity = point.getRelativeVelocity();
 
