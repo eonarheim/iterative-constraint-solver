@@ -76,17 +76,7 @@ var Circle = /** @class */ (function (_super) {
                 var normal = direction.normalize();
                 var tangent = normal.perpendicular();
                 var point = this.xf.pos.add(normal.scale(this.radius));
-                if (contact) {
-                    contact.bodyA = this;
-                    contact.bodyB = other;
-                    contact.normal = normal;
-                    contact.tangent = tangent;
-                    contact.updatePoints([point]);
-                    return contact;
-                }
-                else {
-                    return new contact_1.Contact(this, other, normal, tangent).setPoints([point]);
-                }
+                return new contact_1.Contact(this, other, normal, tangent, [point]);
             }
             return null;
         }
@@ -237,27 +227,7 @@ var ContactPoint = /** @class */ (function () {
          * Direction from center of mass of bodyB to contact point
          */
         this.bToContact = new vector_1.Vector(0, 0);
-        this.update();
     }
-    ContactPoint.prototype.update = function () {
-        var bodyA = this.contact.bodyA;
-        var bodyB = this.contact.bodyB;
-        var normal = this.contact.normal;
-        var tangent = this.contact.tangent;
-        this.aToContact = this.point.sub(bodyA.xf.pos);
-        this.bToContact = this.point.sub(bodyB.xf.pos);
-        var aToContactNormal = this.aToContact.cross(normal);
-        var bToContactNormal = this.bToContact.cross(normal);
-        this.normalMass = bodyA.inverseMass + bodyB.inverseMass +
-            bodyA.inverseInertia * aToContactNormal * aToContactNormal +
-            bodyB.inverseInertia * bToContactNormal * bToContactNormal;
-        var aToContactTangent = this.aToContact.cross(tangent);
-        var bToContactTangent = this.bToContact.cross(tangent);
-        this.tangentMass = bodyA.inverseMass + bodyB.inverseMass +
-            bodyA.inverseInertia * aToContactTangent * aToContactTangent +
-            bodyB.inverseInertia * bToContactTangent * bToContactTangent;
-        return this;
-    };
     ContactPoint.prototype.getRelativeVelocity = function () {
         var bodyA = this.contact.bodyA;
         var bodyB = this.contact.bodyB;
@@ -275,12 +245,13 @@ exports.ContactPoint = ContactPoint;
  * Meant to be re-used over multiple frames
  */
 var Contact = /** @class */ (function () {
-    function Contact(bodyA, bodyB, normal, tangent) {
+    function Contact(bodyA, bodyB, normal, tangent, points) {
+        if (points === void 0) { points = []; }
         this.bodyA = bodyA;
         this.bodyB = bodyB;
         this.normal = normal;
         this.tangent = tangent;
-        this._points = [];
+        this.points = points;
     }
     Object.defineProperty(Contact.prototype, "id", {
         /**
@@ -325,27 +296,6 @@ var Contact = /** @class */ (function () {
         }
         return 0;
     };
-    Contact.prototype.setPoints = function (points) {
-        var _this = this;
-        this._points = points.map(function (p) {
-            return new ContactPoint(p, _this).update();
-        });
-        return this;
-    };
-    Contact.prototype.updatePoints = function (points) {
-        this._points.forEach(function (p, i) {
-            p.point = points[i];
-            p.update();
-        });
-        return this;
-    };
-    Object.defineProperty(Contact.prototype, "points", {
-        get: function () {
-            return this._points;
-        },
-        enumerable: false,
-        configurable: true
-    });
     return Contact;
 }());
 exports.Contact = Contact;
@@ -428,15 +378,7 @@ var Line = /** @class */ (function (_super) {
                 // RETURN CONTACT
                 var separation = da.normalize().scale(other.radius - Math.sqrt(dda));
                 var normal = da.normalize();
-                if (contact) {
-                    contact.bodyA = other;
-                    contact.bodyB = this;
-                    contact.normal = normal;
-                    contact.tangent = normal.perpendicular();
-                    contact.updatePoints([this.begin]);
-                    return contact;
-                }
-                return new contact_1.Contact(other, this, normal, normal.perpendicular()).setPoints([this.begin]);
+                return new contact_1.Contact(other, this, normal, normal.perpendicular(), [this.begin]);
             }
             // Potential region B collision (circle is on the right side of the edge, after the end)
             if (u <= 0) {
@@ -448,15 +390,7 @@ var Line = /** @class */ (function (_super) {
                 // RETURN CONTACT
                 var separation = db.normalize().scale(other.radius - Math.sqrt(ddb));
                 var normal = db.normalize();
-                if (contact) {
-                    contact.bodyA = other;
-                    contact.bodyB = this;
-                    contact.normal = normal;
-                    contact.tangent = normal.perpendicular();
-                    contact.updatePoints([this.end]);
-                    return contact;
-                }
-                return new contact_1.Contact(other, this, normal, normal.perpendicular()).setPoints([this.end]);
+                return new contact_1.Contact(other, this, normal, normal.perpendicular(), [this.end]);
             }
             // Otherwise potential region AB collision (circle is in the middle of the edge between the beginning and end)
             var den = e.dot(e);
@@ -478,15 +412,7 @@ var Line = /** @class */ (function (_super) {
             n = n.normalize();
             var mvt = n.scale(Math.abs(other.radius - Math.sqrt(dd)));
             // RETURN CONTACT
-            if (contact) {
-                contact.bodyA = this;
-                contact.bodyB = other;
-                contact.normal = n;
-                contact.tangent = n.perpendicular();
-                contact.updatePoints([pointOnEdge]);
-                return contact;
-            }
-            return new contact_1.Contact(this, other, n, n.perpendicular()).setPoints([pointOnEdge]);
+            return new contact_1.Contact(this, other, n, n.perpendicular(), [pointOnEdge]);
         }
         return null;
     };
@@ -546,15 +472,91 @@ exports.shuffle = shuffle;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Solver = void 0;
+var contact_1 = __webpack_require__(/*! ./contact */ "./contact.ts");
 var math_1 = __webpack_require__(/*! ./math */ "./math.ts");
 var Solver = /** @class */ (function () {
     function Solver() {
+        this.lastFrameContacts = new Map();
+        // map contact id to contact points
+        this.idToContactPoints = new Map();
     }
-    Solver.prototype.warmStart = function (contacts) {
+    Solver.prototype.getContactPoints = function (id) {
+        var _a;
+        return (_a = this.idToContactPoints.get(id)) !== null && _a !== void 0 ? _a : [];
+    };
+    Solver.prototype.preSolve = function (contacts) {
+        var _a, _b, _c;
+        // Keep track of contacts that done
+        var finishedContactIds = Array.from(this.idToContactPoints.keys());
         for (var _i = 0, contacts_1 = contacts; _i < contacts_1.length; _i++) {
             var contact = contacts_1[_i];
-            for (var _a = 0, _b = contact.points; _a < _b.length; _a++) {
-                var point = _b[_a];
+            // Remove all current contacts that are not done
+            var index = finishedContactIds.indexOf(contact.id);
+            if (index > -1) {
+                finishedContactIds.splice(index, 1);
+            }
+            var contactPoints = (_a = this.idToContactPoints.get(contact.id)) !== null && _a !== void 0 ? _a : [];
+            var pointIndex = 0;
+            for (var _d = 0, _e = contact.points; _d < _e.length; _d++) {
+                var point = _e[_d];
+                var bodyA = contact.bodyA;
+                var bodyB = contact.bodyB;
+                var normal = contact.normal;
+                var tangent = contact.tangent;
+                var aToContact = point.sub(bodyA.xf.pos);
+                var bToContact = point.sub(bodyB.xf.pos);
+                var aToContactNormal = aToContact.cross(normal);
+                var bToContactNormal = bToContact.cross(normal);
+                var normalMass = bodyA.inverseMass + bodyB.inverseMass +
+                    bodyA.inverseInertia * aToContactNormal * aToContactNormal +
+                    bodyB.inverseInertia * bToContactNormal * bToContactNormal;
+                var aToContactTangent = aToContact.cross(tangent);
+                var bToContactTangent = bToContact.cross(tangent);
+                var tangentMass = bodyA.inverseMass + bodyB.inverseMass +
+                    bodyA.inverseInertia * aToContactTangent * aToContactTangent +
+                    bodyB.inverseInertia * bToContactTangent * bToContactTangent;
+                // Preserve normal/tangent impulse by re-using the contact point if it's close
+                if (contactPoints[pointIndex] && ((_c = (_b = contactPoints[pointIndex]) === null || _b === void 0 ? void 0 : _b.point) === null || _c === void 0 ? void 0 : _c.squareDistance(point)) < 4) {
+                    contactPoints[pointIndex].point = point;
+                }
+                else {
+                    // new contact if its' not close or doesn't exist
+                    contactPoints[pointIndex] = new contact_1.ContactPoint(point, contact);
+                }
+                // Update contact point calculations
+                contactPoints[pointIndex].aToContact = aToContact;
+                contactPoints[pointIndex].bToContact = bToContact;
+                contactPoints[pointIndex].normalMass = normalMass;
+                contactPoints[pointIndex].tangentMass = tangentMass;
+                pointIndex++;
+            }
+            this.idToContactPoints.set(contact.id, contactPoints);
+        }
+        // Clean up any contacts that did not occur last frame
+        for (var _f = 0, finishedContactIds_1 = finishedContactIds; _f < finishedContactIds_1.length; _f++) {
+            var id = finishedContactIds_1[_f];
+            this.idToContactPoints.delete(id);
+        }
+    };
+    Solver.prototype.postSolve = function (contacts) {
+        // Store contacts
+        this.lastFrameContacts.clear();
+        for (var _i = 0, contacts_2 = contacts; _i < contacts_2.length; _i++) {
+            var c = contacts_2[_i];
+            this.lastFrameContacts.set(c.id, c);
+        }
+    };
+    /**
+     * Warm up body's based on previous frame contact points
+     * @param contacts
+     */
+    Solver.prototype.warmStart = function (contacts) {
+        var _a;
+        for (var _i = 0, contacts_3 = contacts; _i < contacts_3.length; _i++) {
+            var contact = contacts_3[_i];
+            var contactPoints = (_a = this.idToContactPoints.get(contact.id)) !== null && _a !== void 0 ? _a : [];
+            for (var _b = 0, contactPoints_1 = contactPoints; _b < contactPoints_1.length; _b++) {
+                var point = contactPoints_1[_b];
                 var normalImpulse = contact.normal.scale(point.normalImpulse);
                 // Scaling back the tangent impulse seems to increase stack stability?
                 var tangentImpulse = contact.tangent.scale(point.tangentImpulse).scale(.2);
@@ -573,10 +575,12 @@ var Solver = /** @class */ (function () {
      * @param contacts
      */
     Solver.prototype.solvePosition = function (contacts) {
-        for (var _i = 0, contacts_2 = contacts; _i < contacts_2.length; _i++) {
-            var contact = contacts_2[_i];
-            for (var _a = 0, _b = contact.points; _a < _b.length; _a++) {
-                var point = _b[_a];
+        var _a;
+        for (var _i = 0, contacts_4 = contacts; _i < contacts_4.length; _i++) {
+            var contact = contacts_4[_i];
+            var contactPoints = (_a = this.idToContactPoints.get(contact.id)) !== null && _a !== void 0 ? _a : [];
+            for (var _b = 0, contactPoints_2 = contactPoints; _b < contactPoints_2.length; _b++) {
+                var point = contactPoints_2[_b];
                 var bodyA = contact.bodyA;
                 var bodyB = contact.bodyB;
                 var normal = contact.normal;
@@ -602,14 +606,16 @@ var Solver = /** @class */ (function () {
         }
     };
     Solver.prototype.solveVelocity = function (contacts) {
-        for (var _i = 0, contacts_3 = contacts; _i < contacts_3.length; _i++) {
-            var contact = contacts_3[_i];
+        var _a;
+        for (var _i = 0, contacts_5 = contacts; _i < contacts_5.length; _i++) {
+            var contact = contacts_5[_i];
             var bodyA = contact.bodyA;
             var bodyB = contact.bodyB;
             var restitution = bodyA.bounciness * bodyB.bounciness;
             var friction = Math.min(bodyA.friction, bodyB.friction);
-            for (var _a = 0, _b = contact.points; _a < _b.length; _a++) {
-                var point = _b[_a];
+            var contactPoints = (_a = this.idToContactPoints.get(contact.id)) !== null && _a !== void 0 ? _a : [];
+            for (var _b = 0, contactPoints_3 = contactPoints; _b < contactPoints_3.length; _b++) {
+                var point = contactPoints_3[_b];
                 var relativeVelocity = point.getRelativeVelocity();
                 // Negate velocity in tangent direction to simulate friction
                 var tangentVelocity = -relativeVelocity.dot(contact.tangent);
@@ -626,8 +632,8 @@ var Solver = /** @class */ (function () {
                 bodyA.applyImpulse(point.point, impulse.negate());
                 bodyB.applyImpulse(point.point, impulse);
             }
-            for (var _c = 0, _d = contact.points; _c < _d.length; _c++) {
-                var point = _d[_c];
+            for (var _c = 0, contactPoints_4 = contactPoints; _c < contactPoints_4.length; _c++) {
+                var point = contactPoints_4[_c];
                 // Need to recalc relative velocity because the previous step could have changed vel
                 var relativeVelocity = point.getRelativeVelocity();
                 // Compute impulse in normal direction
@@ -702,6 +708,11 @@ var Vector = /** @class */ (function () {
         var dx = this.x - other.x;
         var dy = this.y - other.y;
         return Math.sqrt(dx * dx + dy * dy);
+    };
+    Vector.prototype.squareDistance = function (other) {
+        var dx = this.x - other.x;
+        var dy = this.y - other.y;
+        return dx * dx + dy * dy;
     };
     Vector.prototype.normalize = function () {
         var d = this.distance(new Vector(0, 0));
@@ -797,7 +808,6 @@ var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 var circle_1 = __webpack_require__(/*! ./circle */ "./circle.ts");
-var contact_1 = __webpack_require__(/*! ./contact */ "./contact.ts");
 var line_1 = __webpack_require__(/*! ./line */ "./line.ts");
 var math_1 = __webpack_require__(/*! ./math */ "./math.ts");
 var solver_1 = __webpack_require__(/*! ./solver */ "./solver.ts");
@@ -829,20 +839,16 @@ var entities = [
     new line_1.Line(new vector_1.Vector(100, 100), new vector_1.Vector(300, 650)),
     new line_1.Line(new vector_1.Vector(500, 650), new vector_1.Vector(700, 100)),
     new circle_1.Circle(40, new vector_1.Vector(canvas.width / 2, 400)),
-    // new Circle(40, new Vector(canvas.width / 2, 300)),
+    new circle_1.Circle(40, new vector_1.Vector(canvas.width / 2, 300)),
     // new Circle(40, new Vector(canvas.width / 2, 200)),
     // new Circle(40, new Vector(canvas.width / 2, 100)),
     // new Circle(40, new Vector(canvas.width / 2, 0)),
     // new Circle(40, new Vector(canvas.width / 2, -100)),
     // new Circle(40, new Vector(canvas.width / 2, -200)),
 ];
-entities[3].m.angularVelocity = 1;
-// entities.reverse();
-math_1.shuffle(entities);
 window.entities = entities;
 var solver = new solver_1.Solver();
 var contacts = [];
-var lastFrameContacts = new Map();
 var update = function (elapsed) {
     var acc = new vector_1.Vector(0, 0);
     if (flags['Gravity']) {
@@ -856,20 +862,21 @@ var update = function (elapsed) {
             circle.m.angularVelocity = math_1.clamp(circle.m.angularVelocity, -Math.PI, Math.PI);
         }
     }
-    // Naive descrete collision detection
+    // Naive descrete collision detection (broadphase + narrowphase)
     // We re-use contacts from the previous frame if they exist
     contacts = [];
     for (var i = 0; i < entities.length; i++) {
         for (var j = i + 1; j < entities.length; j++) {
             var circleA = entities[i];
             var circleB = entities[j];
-            var lastFrame = lastFrameContacts.get(contact_1.Contact.GetId(circleA, circleB));
-            var contact = circleA.collide(circleB, lastFrame);
+            var contact = circleA.collide(circleB);
             if (contact) {
                 contacts.push(contact);
             }
         }
     }
+    // Initialize contact information
+    solver.preSolve(contacts);
     // Warm start impulses for velocity constraint
     // This helps with simulation coherence by reusing work from previous frames
     // Practically this will cancel gravity on big stacks
@@ -879,8 +886,9 @@ var update = function (elapsed) {
     else {
         for (var _a = 0, contacts_1 = contacts; _a < contacts_1.length; _a++) {
             var contact = contacts_1[_a];
-            for (var _b = 0, _c = contact.points; _b < _c.length; _b++) {
-                var point = _c[_b];
+            var contactPoints = solver.getContactPoints(contact.id);
+            for (var _b = 0, contactPoints_1 = contactPoints; _b < contactPoints_1.length; _b++) {
+                var point = contactPoints_1[_b];
                 point.normalImpulse = 0;
                 point.tangentImpulse = 0;
             }
@@ -892,8 +900,8 @@ var update = function (elapsed) {
         solver.solveVelocity(contacts);
     }
     // Integrate positions
-    for (var _d = 0, entities_2 = entities; _d < entities_2.length; _d++) {
-        var circle = entities_2[_d];
+    for (var _c = 0, entities_2 = entities; _c < entities_2.length; _c++) {
+        var circle = entities_2[_c];
         if (!circle.static) {
             circle.xf.pos = circle.xf.pos.add(circle.m.vel.scale(elapsed)).add(acc.scale(0.5 * elapsed * elapsed));
             circle.xf.rotation += circle.m.angularVelocity * elapsed;
@@ -909,9 +917,7 @@ var update = function (elapsed) {
     for (var i = 0; i < flags['Position Iterations']; i++) {
         solver.solvePosition(contacts);
     }
-    // Store contacts
-    lastFrameContacts.clear();
-    contacts.forEach(function (c) { return lastFrameContacts.set(c.id, c); });
+    solver.postSolve(contacts);
 };
 var draw = function (elapsed) {
     ctx.save();
@@ -958,8 +964,9 @@ var draw = function (elapsed) {
     if (flags["Debug"]) {
         for (var _a = 0, contacts_2 = contacts; _a < contacts_2.length; _a++) {
             var contact = contacts_2[_a];
-            for (var _b = 0, _c = contact.points; _b < _c.length; _b++) {
-                var p = _c[_b];
+            var contactPoints = solver.getContactPoints(contact.id);
+            for (var _b = 0, contactPoints_2 = contactPoints; _b < contactPoints_2.length; _b++) {
+                var p = contactPoints_2[_b];
                 ctx.beginPath();
                 ctx.strokeStyle = 'yellow';
                 ctx.arc(p.point.x, p.point.y, 5, 0, Math.PI * 2);
@@ -976,8 +983,8 @@ var draw = function (elapsed) {
                 ctx.fillText('T- ' + p.tangentImpulse.toFixed(1), p.point.x + 10, p.point.y + 10);
             }
         }
-        for (var _d = 0, entities_4 = entities; _d < entities_4.length; _d++) {
-            var circle = entities_4[_d];
+        for (var _c = 0, entities_4 = entities; _c < entities_4.length; _c++) {
+            var circle = entities_4[_c];
             ctx.beginPath();
             ctx.strokeStyle = 'green';
             ctx.moveTo(circle.xf.pos.x, circle.xf.pos.y);
@@ -1014,6 +1021,10 @@ document.addEventListener('keydown', function (ev) {
         singleStep = false;
         lastMs = 0;
         mainloop(.016);
+    }
+    if (ev.code === 'KeyI') {
+        entities[3].applyImpulse(entities[3].xf.pos, new vector_1.Vector(0, -5500));
+        entities[4].applyImpulse(entities[4].xf.pos, new vector_1.Vector(0, 5500));
     }
     if (ev.code === 'KeyB') {
         entities.push(new circle_1.Circle(40, new vector_1.Vector(canvas.width / 2, 0)));
