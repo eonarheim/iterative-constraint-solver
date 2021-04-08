@@ -132,7 +132,7 @@ export class SeparatingAxis {
     }
 
     static findBoxCircleSeparation(box: Box, circle: Circle): ContactInfo {
-        const cirleDir = circle.xf.pos.sub(box.xf.pos).normalize();
+        const circleDir = circle.xf.pos.sub(box.xf.pos).normalize();
         const boxDir = box.xf.pos.sub(circle.xf.pos).normalize();
         const circlePoint = circle.xf.pos.add(boxDir.scale(circle.radius));
         
@@ -157,18 +157,32 @@ export class SeparatingAxis {
                 bestOtherPoint = circlePoint
             }
         }
-        // Test the circle axis against each point of the best edge so far
-        for (let i = 0; i < 2; i++) {
-            const edgePoint = bestSide![i];
-            const circleFromEdgePoint = circle.xf.pos.sub(edgePoint);
-            const separation = circleFromEdgePoint.distance() - circle.radius;
-            if (separation < 0 && separation > bestSeparation) {
-                bestSideIndex = bestSideIndex
-                bestSide = bestSide;
-                bestSeparation = separation;
-                bestAxis = circleFromEdgePoint.normalize();
-                bestOtherPoint = bestAxis.negate().scale(circle.radius).add(circle.xf.pos);
+        // Test the circle -> box axis against each point of the box
+        let minCircleSeparation = Number.MAX_VALUE;
+        let minCircleSide = 0;
+        for (let i = 0; i < 4; i++) {
+            // project box points on the circle axis
+            
+            const projection = circleDir.dot(box.points[i]);
+
+            const minCircle = circleDir.dot(circle.xf.pos) - circle.radius;
+
+            const maxCircle = circleDir.dot(circle.xf.pos) + circle.radius;
+            const separation = Math.min(minCircle - projection, maxCircle - projection);
+
+            if (separation < minCircleSeparation) {
+                minCircleSeparation = separation;
+                minCircleSide = i;
             }
+        }
+
+        if (minCircleSeparation > bestSeparation) {
+            let boxPt = box.getFurthestPoint(circleDir);
+            bestSeparation = minCircleSeparation;
+            bestSide = box.getSide(minCircleSide);
+            bestAxis = circle.xf.pos.sub(boxPt).normalize();
+            bestSideIndex = minCircleSide;
+            bestOtherPoint = box.getFurthestPoint(circleDir);
         }
 
         return {
