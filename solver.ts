@@ -24,6 +24,8 @@ export class Solver {
             let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
             
             let pointIndex = 0;
+            contactPoints.length = contact.points.length;
+
             for (let point of contact.points) {
                 const bodyA = contact.bodyA;
                 const bodyB = contact.bodyB;
@@ -50,9 +52,10 @@ export class Solver {
                 // Preserve normal/tangent impulse by re-using the contact point if it's close
                 if (contactPoints[pointIndex] && contactPoints[pointIndex]?.point?.squareDistance(point) < 4) {
                     contactPoints[pointIndex].point = point;
+                    contactPoints[pointIndex].local = contact.locals[pointIndex]
                 } else {
                     // new contact if its' not close or doesn't exist
-                    contactPoints[pointIndex] = new ContactPoint(point, contact);
+                    contactPoints[pointIndex] = new ContactPoint(point, contact.locals[pointIndex], contact);
                 }
 
                 // Update contact point calculations
@@ -109,7 +112,7 @@ export class Solver {
                 const bodyA = contact.bodyA;
                 const bodyB = contact.bodyB;
                 const normal = contact.normal;
-                const separation = contact.getSeparation();
+                const separation = contact.getSeparation(point.local);
 
                 const steeringConstant = this.flags['Steering Factor']; // 0.2
                 const maxCorrection = -5;

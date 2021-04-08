@@ -1,5 +1,4 @@
 import { Contact } from "./contact";
-import { assert } from "./math";
 import { Motion, Transform } from "./transform";
 import { Vector } from "./vector";
 
@@ -61,5 +60,6 @@ export abstract class Collider {
         this.m.angularVelocity += this.inverseInertia * distanceFromCenter.cross(impulse);
     }
 
-    abstract collide(collider: Collider, contact?: Contact): Contact | null ;
+    abstract collide(collider: Collider, contact?: Contact): Contact | null;
+    abstract draw(ctx: CanvasRenderingContext2D, flags: any): void;
 }

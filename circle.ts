@@ -1,7 +1,8 @@
+import { Box } from "./box";
 import { Collider } from "./collider";
 import { Contact } from "./contact";
 import { Line } from "./line";
-import { Motion, Transform } from "./transform";
+import { SeparatingAxis } from "./separating-axis";
 import { Vector } from "./vector";
 
 export class Circle extends Collider {
@@ -28,26 +29,17 @@ export class Circle extends Collider {
      * @param other 
      * @returns 
      */
-    collide(other: Circle | Line, contact?: Contact): Contact | null {
+    collide(other: Circle | Line | Box, contact?: Contact): Contact | null {
         if (other instanceof Circle) {
-            const combinedRadius = other.radius + this.radius;
-            const distance = other.xf.pos.distance(this.xf.pos);
-            if (distance < combinedRadius) {
-                const separation = combinedRadius - distance;
-                // normal points from A -> B
-                const direction = other.xf.pos.sub(this.xf.pos);
-                const normal = direction.normalize();
-                const tangent = normal.perpendicular();
-                const point = this.xf.pos.add(normal.scale(this.radius));
-                return new Contact(this, other, normal, tangent, [point]);
-            }
-            return null;
+            return SeparatingAxis.findCircleCircleContact(this, other);
+        }
+
+        if (other instanceof Box) {
+            return SeparatingAxis.findCircleBoxContact(this, other)
         }
 
         if (other instanceof Line) {
-            // flip so this -> other
-            const c = other.collide(this, contact) ?? null;
-            return c;
+            return other.collide(this);
         }
 
         return null;
@@ -68,5 +60,42 @@ export class Circle extends Collider {
 
         this.m.vel = this.m.vel.add(impulse.scale(this.inverseMass));
         this.m.angularVelocity += this.inverseInertia * distanceFromCenter.cross(impulse);
+    }
+
+    /**
+     * Find the point on the shape furthest in the direction specified
+     */
+    getFurthestPoint(direction: Vector): Vector {
+        const dir = direction.normalize();
+        return this.xf.pos.add(dir.scale(this.radius));
+    }
+
+    getFurthestLocalPoint(direction: Vector): Vector {
+        const dir = direction.normalize();
+        return dir.scale(this.radius);
+    }
+
+    draw(ctx: CanvasRenderingContext2D, flags?: any) {
+        ctx.beginPath();
+        ctx.fillStyle = 'blue';
+        ctx.arc(this.xf.pos.x, this.xf.pos.y, this.radius, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+
+        if (flags["Debug"]) {
+            ctx.fillStyle = 'yellow';
+            ctx.fillText('id: ' + this.id, this.xf.pos.x, this.xf.pos.y);
+        }
+
+        ctx.save();
+        ctx.translate(this.xf.pos.x, this.xf.pos.y);
+        ctx.rotate(this.xf.rotation);
+        ctx.beginPath()
+        ctx.strokeStyle = 'black';
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0 + this.radius, 0);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
     }
 }

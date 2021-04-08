@@ -2,6 +2,7 @@ import { Circle } from "./circle";
 import { Collider } from "./collider";
 import { Contact } from "./contact";
 import { assert } from "./math";
+import { ContactInfo } from "./separating-axis";
 import { Vector } from "./vector";
 
 export class Line extends Collider {
@@ -57,7 +58,13 @@ export class Line extends Collider {
                 // RETURN CONTACT
                 let separation = da.normalize().scale(other.radius - Math.sqrt(dda));
                 let normal = da.normalize();
-                return new Contact(other, this, normal, normal.perpendicular(), [this.begin]);
+                let info: ContactInfo = {
+                    collider: other,
+                    separation: other.radius - Math.sqrt(dda),
+                    axis: normal,
+                    point: this.begin
+                }
+                return new Contact(other, this, normal, normal.perpendicular(), info, [this.begin]);
             }
             
             // Potential region B collision (circle is on the right side of the edge, after the end)
@@ -70,7 +77,13 @@ export class Line extends Collider {
                 // RETURN CONTACT
                 let separation = db.normalize().scale(other.radius - Math.sqrt(ddb));
                 let normal = db.normalize();
-                return new Contact(other, this, normal, normal.perpendicular(), [this.end]);
+                let info: ContactInfo = {
+                    collider: other,
+                    separation: other.radius - Math.sqrt(ddb),
+                    axis: normal,
+                    point: this.end
+                }
+                return new Contact(other, this, normal, normal.perpendicular(), info, [this.end]);
             }
 
             // Otherwise potential region AB collision (circle is in the middle of the edge between the beginning and end)
@@ -97,10 +110,32 @@ export class Line extends Collider {
 
             const mvt = n.scale(Math.abs(other.radius - Math.sqrt(dd)));
 
+            let info: ContactInfo = {
+                collider: other,
+                separation: other.radius - Math.sqrt(dd),
+                axis: n,
+                point: this.begin
+            }
             // RETURN CONTACT
-            return new Contact(this, other, n, n.perpendicular(), [pointOnEdge]);
+            return new Contact(this, other, n, n.perpendicular(), info, [pointOnEdge]);
         }
 
         return null;
+    }
+
+    draw(ctx: CanvasRenderingContext2D, flags: any) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = 'green'
+        ctx.moveTo(this.begin.x, this.begin.y);
+        ctx.lineTo(this.end.x, this.end.y);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+
+        if (flags["Debug"]) {
+            ctx.fillStyle = 'yellow';
+            ctx.fillText('id: ' + this.id, this.xf.pos.x, this.xf.pos.y);
+        }
     }
 }

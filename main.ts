@@ -1,4 +1,6 @@
+import { Box } from "./box";
 import { Circle } from "./circle";
+import { Collider } from "./collider";
 import { Contact } from "./contact";
 import { Line } from "./line";
 import { clamp } from "./math";
@@ -51,12 +53,14 @@ for (let key in flags) {
     }
 }
 
-const entities = [
-    new Line(new Vector(50, 550), new Vector(750, 550)),
+const entities: Collider[] = [
+    // new Line(new Vector(50, 550), new Vector(750, 550)),
+    new Box(500, 20, new Vector(canvas.width / 2, 550)),
     new Line(new Vector(100, 100), new Vector(300, 650)),
     new Line(new Vector(500, 650), new Vector(700, 100)),
-    new Circle(40, new Vector(canvas.width / 2, 400)),
-    new Circle(40, new Vector(canvas.width / 2, 300)),
+    // new Circle(40, new Vector(canvas.width / 2, 400)),
+    // new Box(40, 40, new Vector(canvas.width / 2, 400)),
+    // new Circle(40, new Vector(canvas.width / 2, 300)),
     // new Circle(40, new Vector(canvas.width / 2, 200)),
     // new Circle(40, new Vector(canvas.width / 2, 100)),
     // new Circle(40, new Vector(canvas.width / 2, 0)),
@@ -64,6 +68,8 @@ const entities = [
     // new Circle(40, new Vector(canvas.width / 2, -200)),
 ];
 (window as any).entities = entities;
+entities[0].static = true;
+// entities[entities.length - 1].xf.rotation = Math.PI / 5;
 
 let solver = new Solver(flags);
 let contacts: Contact[] = [];
@@ -77,7 +83,7 @@ const update = (elapsed: number) => {
     for (let circle of entities) {
         if (!circle.static) {
             circle.m.vel = circle.m.vel.add(acc.scale(elapsed));
-            circle.m.angularVelocity = clamp(circle.m.angularVelocity, -Math.PI, Math.PI);
+            circle.m.angularVelocity = clamp(circle.m.angularVelocity, -1, 1);
         }
     }
 
@@ -86,9 +92,9 @@ const update = (elapsed: number) => {
     contacts = []
     for (let i = 0; i < entities.length; i++) {
         for (let j = i + 1; j < entities.length; j++) {
-            let circleA = entities[i];
-            let circleB = entities[j];
-            let contact = circleA.collide(circleB);
+            let colliderA = entities[i];
+            let colliderB = entities[j];
+            let contact = colliderA.collide(colliderB);
             if (contact) {
                 contacts.push(contact);
             }
@@ -123,8 +129,9 @@ const update = (elapsed: number) => {
     // Integrate positions
     for (let circle of entities) {
         if (!circle.static) {
-            circle.xf.pos = circle.xf.pos.add(circle.m.vel.scale(elapsed)).add(acc.scale(0.5 * elapsed * elapsed));
-            circle.xf.rotation += circle.m.angularVelocity * elapsed;
+            let offset = circle.m.vel.scale(elapsed).add(acc.scale(0.5 * elapsed * elapsed));
+            circle.xf.pos = circle.xf.pos.add(offset);
+            circle.xf.rotation += clamp(circle.m.angularVelocity, -1, 1) * elapsed;
             while (circle.xf.rotation > Math.PI * 2) {
                 circle.xf.rotation -= Math.PI * 2;
             }
@@ -241,7 +248,13 @@ document.addEventListener('keydown', (ev) => {
         entities[4].applyImpulse(entities[4].xf.pos, new Vector(0, 5500));
     }
 
-    if (ev.code === 'KeyB') {
+    if (ev.code === 'KeyC') {
         entities.push(new Circle(40, new Vector(canvas.width / 2, 0)));
+    }
+
+    if (ev.code === 'KeyB') {
+        let box = new Box(100, 40, new Vector(canvas.width / 2, 300));
+        box.bounciness = .1;
+        entities.push(box);
     }
 })
