@@ -6,7 +6,7 @@ import { Vector } from "./vector";
 
 export interface ContactInfo {
     /**
-     * Collider 
+     * Collider A
      */
     collider: Collider,
     /**
@@ -18,20 +18,23 @@ export interface ContactInfo {
      */
     axis: Vector,
     /**
-     * Side of separation from the collider's perpsective
+     * Side of separation (reference) from the collider's perpsective
      */
     side?: [Vector, Vector],
     localSide?: [Vector, Vector],
     
     /**
-     * Index of the side
+     * Index of the separation side (reference) from the collider's perspective
      */
     sideId?: number,
 
     /**
-     * Point on other shape
+     * Point on collider B (incident point)
      */
     point: Vector;
+    /**
+     * Local point on collider B (incident point)
+     */
     localPoint?: Vector;
 }
 
@@ -199,6 +202,7 @@ export class SeparatingAxis {
             normal.perpendicular(),
             separation,
             [point],
+            [circle.xf.inverse(point)]
         );
     }
 

@@ -83,6 +83,7 @@ export class Contact {
         }
     }
 
+    // TODO move this to contact point?
     /**
      * Returns the separation in this contact (negative)
      * @returns 
@@ -123,7 +124,7 @@ export class Contact {
         if (this.bodyA instanceof Box && this.bodyB instanceof Circle ||
             this.bodyB instanceof Box && this.bodyA instanceof Circle) {
             if (this.info.side) {
-                return SeparatingAxis.distanceToPoint(this.info.side[0], this.info.side[1], point, true);
+                return SeparatingAxis.distanceToPoint(this.info.side[0], this.info.side[1], this.bodyA.xf.apply(point), true);
             }
         }
 
@@ -149,9 +150,6 @@ export class Contact {
         public tangent: Vector,
         public info: ContactInfo,
         public points: Vector[] = [],
-        /**
-         * Points are on bodyA
-         */
         public locals: Vector[] = []
     ) {}
 }

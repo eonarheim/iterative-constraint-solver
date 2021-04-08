@@ -9,7 +9,7 @@ export class Circle extends Collider {
     constructor(public radius: number, pos: Vector) {
         super();
         this.xf.pos = pos;
-        this.mass = radius;
+        this.mass = 1;
     }
 
     get inverseMass() {
