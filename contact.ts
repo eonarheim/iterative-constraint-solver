@@ -16,10 +16,10 @@ export class ContactPoint {
         const bodyB = this.contact.bodyB;
         // Relative velocity in linear terms
         // Angular to linear velocity formula -> omega = velocity/radius so omega x radius = velocity
-        const vel = bodyB.m.vel.add(cross(bodyB.m.angularVelocity, this.bToContact)).sub(
-               bodyA.m.vel.sub(cross(bodyA.m.angularVelocity, this.aToContact)));
+        const velA = bodyA.m.vel.add(Vector.cross(bodyA.m.angularVelocity, this.aToContact));
+        const velB = bodyB.m.vel.add(Vector.cross(bodyB.m.angularVelocity, this.bToContact));
 
-        return vel;
+        return velB.sub(velA);
     }
 
     /**
