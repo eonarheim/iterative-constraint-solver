@@ -1,6 +1,9 @@
 export class Vector {
     constructor(public x: number, public y: number) {}
-    distance(other: Vector) {
+    distance(other?: Vector) {
+        if (!other) {
+            other = new Vector(0, 0);
+        }
         const dx = this.x - other.x;
         const dy = this.y - other.y;
         return Math.sqrt(dx * dx + dy * dy);
@@ -77,8 +80,24 @@ export class Vector {
     sub(other: Vector): Vector {
         return new Vector(this.x - other.x, this.y - other.y);
     }
-}
 
-export const cross = (num: number, vec: Vector) => {
-    return new Vector(-num * vec.y, num * vec.x)
+
+    /**
+     * Rotates the current vector around a point by a certain number of
+     * degrees in radians
+     */
+    rotate(angle: number, anchor?: Vector): Vector {
+        if (!anchor) {
+            anchor = new Vector(0, 0);
+        }
+        const sinAngle = Math.sin(angle);
+        const cosAngle = Math.cos(angle);
+        const x = cosAngle * (this.x - anchor.x) - sinAngle * (this.y - anchor.y) + anchor.x;
+        const y = sinAngle * (this.x - anchor.x) + cosAngle * (this.y - anchor.y) + anchor.y;
+        return new Vector(x, y);
+    }
+
+    static cross(num: number, vec: Vector) {
+        return new Vector(-num * vec.y, num * vec.x)
+    }
 }
