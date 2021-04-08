@@ -1,7 +1,7 @@
 import { Circle } from "./circle";
 import { Contact } from "./contact";
 import { Line } from "./line";
-import { assert, clamp, shuffle } from "./math";
+import { clamp } from "./math";
 import { Solver } from "./solver";
 import { Vector } from "./vector";
 
@@ -15,15 +15,36 @@ document.body.appendChild(canvas);
 const gui = new dat.GUI({ name: 'Iterative Solver' });
 const flags: Record<string, number | boolean> = {
     "Debug": true,
+    "Points": true,
+    "Normals": true,
+    "RelativeVel": true,
     "Warming": true,
-    "Position Iterations": 2,
+    "Steering Factor": .2,
+    "Slop": .5,
+    "Position Iterations": 3,
     "Velocity Iterations": 8,
     "Gravity Value": 400,
     "Gravity": false
 }
 for (let key in flags) {
     if (typeof flags[key] === 'number') {
-        gui.add(flags, key, 0, 20, 1);
+        switch(key) {
+            case "Steering Factor": {
+                gui.add(flags, key, .05, 1, .05);
+                break;
+            }
+            case "Slop": {
+                gui.add(flags, key, .5, 5, .5);
+                break;
+            }
+            case "Gravity Value": {
+                gui.add(flags, key, 0, 1000, 1);
+                break;
+            }
+            default: {
+                gui.add(flags, key, 0, 20, 1);
+            }
+        }
     }
     if (typeof flags[key] === 'boolean') {
         gui.add(flags, key);
@@ -44,7 +65,7 @@ const entities = [
 ];
 (window as any).entities = entities;
 
-let solver = new Solver();
+let solver = new Solver(flags);
 let contacts: Contact[] = [];
 const update = (elapsed: number) => {
     let acc = new Vector(0, 0);
@@ -128,67 +149,44 @@ const draw = (elapsed: number) => {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (let e of entities) {
-        if (e instanceof Circle) {
-            ctx.beginPath();
-            ctx.fillStyle = 'blue';
-            ctx.arc(e.xf.pos.x, e.xf.pos.y, e.radius, 0, Math.PI * 2);
-            ctx.closePath();
-            ctx.fill();
-
-            if (flags["Debug"]) {
-                ctx.fillStyle = 'yellow';
-                ctx.fillText('id: ' + e.id, e.xf.pos.x, e.xf.pos.y);
-            }
-
-            ctx.save();
-            ctx.translate(e.xf.pos.x, e.xf.pos.y);
-            ctx.rotate(e.xf.rotation);
-            ctx.beginPath()
-            ctx.strokeStyle = 'black';
-            ctx.moveTo(0, 0);
-            ctx.lineTo(0 + e.radius, 0);
-            ctx.closePath();
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        if (e instanceof Line) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.strokeStyle = 'green'
-            ctx.moveTo(e.begin.x, e.begin.y);
-            ctx.lineTo(e.end.x, e.end.y);
-            ctx.closePath();
-            ctx.stroke();
-            ctx.restore();
-
-            if (flags["Debug"]) {
-                ctx.fillStyle = 'yellow';
-                ctx.fillText('id: ' + e.id, e.xf.pos.x, e.xf.pos.y);
-            }
-        }
+        e.draw(ctx, flags);
     }
 
     if (flags["Debug"]) {
         for (let contact of contacts) {
             let contactPoints = solver.getContactPoints(contact.id);
             for (let p of contactPoints) {
-                ctx.beginPath();
-                ctx.strokeStyle = 'yellow'
-                ctx.arc(p.point.x, p.point.y, 5, 0, Math.PI * 2);
-                ctx.closePath();
-                ctx.stroke();
+                if (flags["Points"]) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'yellow'
+                    ctx.arc(p.point.x, p.point.y, 5, 0, Math.PI * 2);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
 
-                ctx.beginPath();
-                ctx.strokeStyle = 'red'
-                ctx.moveTo(p.point.x, p.point.y);
-                ctx.lineTo(p.point.x + contact.normal.x * 10, p.point.y + contact.normal.y * 10);
-                ctx.closePath();
-                ctx.stroke();
+                if (flags["Normals"]) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'red'
+                    ctx.moveTo(p.point.x, p.point.y);
+                    ctx.lineTo(p.point.x + contact.normal.x * 10, p.point.y + contact.normal.y * 10);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
 
-                ctx.fillStyle = 'yellow';
-                ctx.fillText('N- ' + p.normalImpulse.toFixed(1), p.point.x + 10, p.point.y);
-                ctx.fillText('T- ' + p.tangentImpulse.toFixed(1), p.point.x + 10, p.point.y + 10);
+                if (flags["RelativeVel"]) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'blue'
+                    ctx.moveTo(p.point.x, p.point.y);
+                    ctx.lineTo(p.point.x + p.getRelativeVelocity().x, p.point.y + p.getRelativeVelocity().y);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+
+                if (flags["Impulse"]) {
+                    ctx.fillStyle = 'yellow';
+                    ctx.fillText('N- ' + p.normalImpulse.toFixed(1), p.point.x + 10, p.point.y);
+                    ctx.fillText('T- ' + p.tangentImpulse.toFixed(1), p.point.x + 10, p.point.y + 10);
+                }
             }
         }
 

@@ -1,7 +1,8 @@
 import { Contact, ContactPoint } from "./contact";
-import { assert, clamp } from "./math";
+import { clamp } from "./math";
 
 export class Solver {
+    constructor(public flags: any) {}
     lastFrameContacts: Map<string, Contact> = new Map();
 
     // map contact id to contact points
@@ -87,19 +88,12 @@ export class Solver {
         for (let contact of contacts) {
             let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
             for (let point of contactPoints) {
-
                 const normalImpulse = contact.normal.scale(point.normalImpulse);
-                // Scaling back the tangent impulse seems to increase stack stability?
-                const tangentImpulse = contact.tangent.scale(point.tangentImpulse).scale(.2);
+                const tangentImpulse = contact.tangent.scale(point.tangentImpulse);
+
                 const impulse = normalImpulse.add(tangentImpulse);
-                // contact.bodyA.applyImpulse(point.point, impulse.negate());
-                // contact.bodyB.applyImpulse(point.point, impulse);
-
-                contact.bodyA.applyLinearImpulse(normalImpulse.negate());
-                contact.bodyA.applyAngularImpulse(point.point, tangentImpulse.negate());
-
-                contact.bodyB.applyLinearImpulse(normalImpulse);
-                contact.bodyB.applyAngularImpulse(point.point, tangentImpulse);
+                contact.bodyA.applyImpulse(point.point, impulse.negate());
+                contact.bodyB.applyImpulse(point.point, impulse);
             }
         }
     }
@@ -117,9 +111,10 @@ export class Solver {
                 const normal = contact.normal;
                 const separation = contact.getSeparation();
 
-                const steeringConstant = 0.2
+                const steeringConstant = this.flags['Steering Factor']; // 0.2
                 const maxCorrection = -5;
-                const slop = 1;
+                const slop = this.flags['Slop']; // .5;
+
                 // Clamp to avoid over-correction
                 // Remember that we are shooting for 0 overlap in the end
                 const steeringForce = clamp(steeringConstant * (separation + slop), maxCorrection, 0);
