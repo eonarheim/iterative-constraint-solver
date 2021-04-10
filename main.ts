@@ -112,10 +112,10 @@ const update = (elapsed: number) => {
         solver.warmStart(contacts);
     } else {
         for (let contact of contacts) {
-            let contactPoints = solver.getContactPoints(contact.id);
-            for (let point of contactPoints) {
-                point.normalImpulse = 0;
-                point.tangentImpulse = 0;
+            let constraints = solver.getContactConstraints(contact.id);
+            for (let constraint of constraints) {
+                constraint.normalImpulse = 0;
+                constraint.tangentImpulse = 0;
             }
         }
     }
@@ -161,7 +161,7 @@ const draw = (elapsed: number) => {
 
     if (flags["Debug"]) {
         for (let contact of contacts) {
-            let contactPoints = solver.getContactPoints(contact.id);
+            let contactPoints = solver.getContactConstraints(contact.id);
             for (let p of contactPoints) {
                 if (flags["Points"]) {
                     ctx.beginPath();

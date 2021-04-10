@@ -1,30 +1,84 @@
-import { Contact, ContactPoint } from "./contact";
+import { Box } from "./box";
+import { Circle } from "./circle";
+import { Contact } from "./contact";
+import { Line } from "./line";
 import { clamp } from "./math";
+import { SeparatingAxis } from "./separating-axis";
+import { Vector } from "./vector";
+
+/**
+ * Holds information about contact points, meant to be reused over multiple frames of contact
+ */
+ export class ContactConstraintPoint {
+
+    constructor(public point: Vector, public local: Vector, public contact: Contact) {}
+
+    public getRelativeVelocity() {
+        const bodyA = this.contact.bodyA;
+        const bodyB = this.contact.bodyB;
+        // Relative velocity in linear terms
+        // Angular to linear velocity formula -> omega = velocity/radius so omega x radius = velocity
+        const velA = bodyA.m.vel.add(Vector.cross(bodyA.m.angularVelocity, this.aToContact));
+        const velB = bodyB.m.vel.add(Vector.cross(bodyB.m.angularVelocity, this.bToContact));
+
+        return velB.sub(velA);
+    }
+
+    /**
+     * Impulse accumulated over time in normal direction
+     */
+    public normalImpulse: number = 0;
+
+    /**
+     * Impulse accumulated over time in the tangent direction
+     */
+    public tangentImpulse: number = 0;
+
+    /**
+     * Effective mass seen in the normal direction
+     */
+    public normalMass: number = 0;
+    
+    /**
+     * Effective mass seen in the tangent direction
+     */
+    public tangentMass: number = 0;
+
+    /** 
+     * Direction from center of mass of bodyA to contact point
+     */
+    public aToContact: Vector = new Vector(0, 0);
+
+    /** 
+     * Direction from center of mass of bodyB to contact point
+     */
+    public bToContact: Vector = new Vector(0, 0);
+}
 
 export class Solver {
     constructor(public flags: any) {}
     lastFrameContacts: Map<string, Contact> = new Map();
 
     // map contact id to contact points
-    idToContactPoints: Map<string, ContactPoint[]> = new Map();
+    idToContactConstraint: Map<string, ContactConstraintPoint[]> = new Map();
 
-    getContactPoints(id: string) {
-        return this.idToContactPoints.get(id) ?? [];
+    getContactConstraints(id: string) {
+        return this.idToContactConstraint.get(id) ?? [];
     }
 
     preSolve(contacts: Contact[]) {
         // Keep track of contacts that done
-        let finishedContactIds = Array.from(this.idToContactPoints.keys());
+        let finishedContactIds = Array.from(this.idToContactConstraint.keys());
         for (let contact of contacts) {
             // Remove all current contacts that are not done
             let index = finishedContactIds.indexOf(contact.id);
             if (index > -1) {
                 finishedContactIds.splice(index, 1);
             }
-            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
+            let constraints = this.idToContactConstraint.get(contact.id) ?? [];
             
             let pointIndex = 0;
-            contactPoints.length = contact.points.length;
+            constraints.length = contact.points.length;
 
             for (let point of contact.points) {
                 const bodyA = contact.bodyA;
@@ -50,28 +104,28 @@ export class Solver {
                                 bodyB.inverseInertia * bToContactTangent * bToContactTangent;
 
                 // Preserve normal/tangent impulse by re-using the contact point if it's close
-                if (contactPoints[pointIndex] && contactPoints[pointIndex]?.point?.squareDistance(point) < 4) {
-                    contactPoints[pointIndex].point = point;
-                    contactPoints[pointIndex].local = contact.locals[pointIndex]
+                if (constraints[pointIndex] && constraints[pointIndex]?.point?.squareDistance(point) < 4) {
+                    constraints[pointIndex].point = point;
+                    constraints[pointIndex].local = contact.locals[pointIndex]
                 } else {
                     // new contact if its' not close or doesn't exist
-                    contactPoints[pointIndex] = new ContactPoint(point, contact.locals[pointIndex], contact);
+                    constraints[pointIndex] = new ContactConstraintPoint(point, contact.locals[pointIndex], contact);
                 }
 
                 // Update contact point calculations
-                contactPoints[pointIndex].aToContact = aToContact;
-                contactPoints[pointIndex].bToContact = bToContact;
-                contactPoints[pointIndex].normalMass = normalMass;
-                contactPoints[pointIndex].tangentMass = tangentMass;
+                constraints[pointIndex].aToContact = aToContact;
+                constraints[pointIndex].bToContact = bToContact;
+                constraints[pointIndex].normalMass = normalMass;
+                constraints[pointIndex].tangentMass = tangentMass;
 
                 pointIndex++
             }
-            this.idToContactPoints.set(contact.id, contactPoints);
+            this.idToContactConstraint.set(contact.id, constraints);
         }
 
         // Clean up any contacts that did not occur last frame
         for (const id of finishedContactIds) {
-            this.idToContactPoints.delete(id);
+            this.idToContactConstraint.delete(id);
         }
     }
 
@@ -89,17 +143,62 @@ export class Solver {
      */
     warmStart(contacts: Contact[]) {
         for (let contact of contacts) {
-            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
-            for (let point of contactPoints) {
-                const normalImpulse = contact.normal.scale(point.normalImpulse);
-                const tangentImpulse = contact.tangent.scale(point.tangentImpulse);
+            let constraints = this.idToContactConstraint.get(contact.id) ?? [];
+            for (let constraint of constraints) {
+                const normalImpulse = contact.normal.scale(constraint.normalImpulse);
+                const tangentImpulse = contact.tangent.scale(constraint.tangentImpulse);
 
                 const impulse = normalImpulse.add(tangentImpulse);
-                contact.bodyA.applyImpulse(point.point, impulse.negate());
-                contact.bodyB.applyImpulse(point.point, impulse);
+                contact.bodyA.applyImpulse(constraint.point, impulse.negate());
+                contact.bodyB.applyImpulse(constraint.point, impulse);
             }
         }
     }
+
+    private _getSeparation(contact: Contact, point: Vector) {
+        let bodyA = contact.bodyA;
+        let bodyB = contact.bodyB;
+        if (bodyA instanceof Circle && bodyB instanceof Circle) {
+            const combinedRadius = bodyA.radius + bodyB.radius;
+            const distance = bodyA.xf.pos.distance(bodyB.xf.pos);
+            const separation = combinedRadius - distance;
+            return -separation;
+        }
+
+        if (bodyA instanceof Circle && bodyB instanceof Line) {
+            return bodyB.getSeparation(bodyA);
+        }
+
+        if (bodyA instanceof Line && bodyB instanceof Circle) {
+            return bodyA.getSeparation(bodyB);
+        }
+
+        if (bodyA instanceof Box && bodyB instanceof Box) {
+            if (contact.info.localSide) {
+                let side: [Vector, Vector];
+                let worldPoint: Vector;
+                if (contact.info.collider === bodyA) {
+                    side = [bodyA.xf.apply(contact.info.localSide[0]), bodyA.xf.apply(contact.info.localSide[1])];
+                    worldPoint = bodyB.xf.apply(point);
+                } else {
+                    side = [bodyB.xf.apply(contact.info.localSide[0]), bodyB.xf.apply(contact.info.localSide[1])];
+                    worldPoint = bodyA.xf.apply(point);
+                }
+
+                return SeparatingAxis.distanceToPoint(side[0], side[1], worldPoint, true);
+            }
+        }
+
+        if (bodyA instanceof Box && bodyB instanceof Circle ||
+            bodyB instanceof Box && bodyA instanceof Circle) {
+            if (contact.info.side) {
+                return SeparatingAxis.distanceToPoint(contact.info.side[0], contact.info.side[1], bodyA.xf.apply(point), true);
+            }
+        }
+
+        return 0
+    }
+    
 
     /**
      * Iteratively solve the position overlap constraint
@@ -107,12 +206,12 @@ export class Solver {
      */
     solvePosition(contacts: Contact[]) {
         for (let contact of contacts) {
-            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
-            for (let point of contactPoints) {
+            let constraints = this.idToContactConstraint.get(contact.id) ?? [];
+            for (let point of constraints) {
                 const bodyA = contact.bodyA;
                 const bodyB = contact.bodyB;
                 const normal = contact.normal;
-                const separation = contact.getSeparation(point.local);
+                const separation = this._getSeparation(contact, point.local);
 
                 const steeringConstant = this.flags['Steering Factor']; // 0.2
                 const maxCorrection = -5;
@@ -147,9 +246,9 @@ export class Solver {
 
             const restitution = bodyA.bounciness * bodyB.bounciness;
             const friction = Math.min(bodyA.friction, bodyB.friction);
-            let contactPoints = this.idToContactPoints.get(contact.id) ?? [];
+            let constraints = this.idToContactConstraint.get(contact.id) ?? [];
 
-            for (let point of contactPoints) {
+            for (let point of constraints) {
                 const relativeVelocity = point.getRelativeVelocity();
 
                 // Negate velocity in tangent direction to simulate friction
@@ -170,7 +269,7 @@ export class Solver {
                 bodyB.applyImpulse(point.point, impulse);
             }
 
-            for (let point of contactPoints) {
+            for (let point of constraints) {
                 // Need to recalc relative velocity because the previous step could have changed vel
                 const relativeVelocity = point.getRelativeVelocity();
 

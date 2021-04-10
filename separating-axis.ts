@@ -5,22 +5,31 @@ import { Contact } from "./contact";
 import { Vector } from "./vector";
 
 export interface ContactInfo {
+
     /**
      * Collider A
      */
     collider: Collider,
+
     /**
      * Signed value (negative means overlap, positive no overlap)
      */
     separation: number,
+
     /**
      * Axis of separation from the collider's perpective
      */
     axis: Vector,
+
     /**
      * Side of separation (reference) from the collider's perpsective
      */
+
     side?: [Vector, Vector],
+
+    /**
+     * Local side of separation (reference) from the collider's perspective
+     */
     localSide?: [Vector, Vector],
     
     /**
@@ -32,6 +41,7 @@ export interface ContactInfo {
      * Point on collider B (incident point)
      */
     point: Vector;
+
     /**
      * Local point on collider B (incident point)
      */
