@@ -44,6 +44,11 @@ import { Vector } from "./vector";
      */
     public tangentMass: number = 0;
 
+    /**
+     * Tracks the original contacts velocity multiplied by restitution
+     */
+    public originalVelocityAndRestitution: number = 0;
+
     /** 
      * Direction from center of mass of bodyA to contact point
      */
@@ -115,8 +120,16 @@ export class Solver {
                 // Update contact point calculations
                 constraints[pointIndex].aToContact = aToContact;
                 constraints[pointIndex].bToContact = bToContact;
-                constraints[pointIndex].normalMass = normalMass;
-                constraints[pointIndex].tangentMass = tangentMass;
+                constraints[pointIndex].normalMass = 1.0 / normalMass;
+                constraints[pointIndex].tangentMass = 1.0 / tangentMass;
+
+                 // Calculate relative velocity before solving to accurately do restitution
+                const restitution = bodyA.bounciness > bodyB.bounciness ? bodyA.bounciness : bodyB.bounciness;
+                const relativeVelocity = contact.normal.dot(constraints[pointIndex].getRelativeVelocity());
+                constraints[pointIndex].originalVelocityAndRestitution = 0;
+                if (relativeVelocity < -0.1) { // TODO what's a good threshold here?
+                    constraints[pointIndex].originalVelocityAndRestitution = -restitution * relativeVelocity;
+                }
 
                 pointIndex++
             }
@@ -220,7 +233,7 @@ export class Solver {
                 // Clamp to avoid over-correction
                 // Remember that we are shooting for 0 overlap in the end
                 const steeringForce = clamp(steeringConstant * (separation + slop), maxCorrection, 0);
-                const impulse = normal.scale(-steeringForce / point.normalMass);
+                const impulse = normal.scale(-steeringForce * point.normalMass);
 
                 
                 // This is a pseudo impulse, meaning we aren't doing a real impulse calculation
@@ -246,14 +259,14 @@ export class Solver {
 
             const restitution = bodyA.bounciness * bodyB.bounciness;
             const friction = Math.min(bodyA.friction, bodyB.friction);
-            let constraints = this.idToContactConstraint.get(contact.id) ?? [];
+            let constraints: ContactConstraintPoint[] = this.idToContactConstraint.get(contact.id) ?? [];
 
             for (let point of constraints) {
                 const relativeVelocity = point.getRelativeVelocity();
 
                 // Negate velocity in tangent direction to simulate friction
                 const tangentVelocity = -relativeVelocity.dot(contact.tangent);
-                let impulseDelta = tangentVelocity / point.tangentMass;
+                let impulseDelta = tangentVelocity * point.tangentMass;
 
                 // Clamping based in Erin Catto's GDC 2006 talk
                 // Correct clamping https://github.com/erincatto/box2d-lite/blob/master/docs/GDC2006_Catto_Erin_PhysicsTutorial.pdf
@@ -275,8 +288,10 @@ export class Solver {
 
                 // Compute impulse in normal direction
                 const normalVelocity = relativeVelocity.dot(contact.normal);
-                // See https://en.wikipedia.org/wiki/Collision_response
-                let impulseDelta = (-(1 + restitution) * normalVelocity) / point.normalMass;
+
+                // Per Erin it is a mistake to apply the restitution inside the iteration
+                // From Erin Catto's Box2D we keep original contact velocity and adjust by small impulses
+                let impulseDelta = -point.normalMass * (normalVelocity - point.originalVelocityAndRestitution);
 
                 // Clamping based in Erin Catto's GDC 2014 talk
                 // Accumulated impulse stored in the contact is always positive (dV > 0)

@@ -249,7 +249,9 @@ document.addEventListener('keydown', (ev) => {
     }
 
     if (ev.code === 'KeyC') {
-        entities.push(new Circle(40, new Vector(canvas.width / 2, 0)));
+        let circle = new Circle(40, new Vector(canvas.width / 2, 0));
+        circle.bounciness = .5;
+        entities.push(circle);
     }
 
     if (ev.code === 'KeyB') {
